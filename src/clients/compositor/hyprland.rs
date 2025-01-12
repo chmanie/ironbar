@@ -92,8 +92,9 @@ impl Client {
             let lock = lock.clone();
             let active = active.clone();
 
-            event_listener.add_workspace_added_handler(move |workspace_type| {
+            event_listener.add_workspace_added_handler(move |event_data| {
                 let _lock = lock!(lock);
+                let workspace_type = event_data.name;
                 debug!("Added workspace: {workspace_type:?}");
 
                 let workspace_name = get_workspace_name(workspace_type);
@@ -112,11 +113,12 @@ impl Client {
             let lock = lock.clone();
             let active = active.clone();
 
-            event_listener.add_workspace_change_handler(move |workspace_type| {
+            event_listener.add_workspace_changed_handler(move |event_data| {
                 let _lock = lock!(lock);
 
                 let mut prev_workspace = lock!(active);
 
+                let workspace_type = event_data.name;
                 debug!(
                     "Received workspace change: {:?} -> {workspace_type:?}",
                     prev_workspace.as_ref().map(|w| &w.id)
@@ -144,9 +146,18 @@ impl Client {
             let lock = lock.clone();
             let active = active.clone();
 
-            event_listener.add_active_monitor_change_handler(move |event_data| {
+            event_listener.add_active_monitor_changed_handler(move |event_data| {
                 let _lock = lock!(lock);
-                let workspace_type = event_data.workspace;
+
+                let workspace_type = if let Some(name) = event_data.workspace_name {
+                    name
+                } else {
+                    error!(
+                        "unable to locate workspace on monitor: {}",
+                        event_data.monitor_name
+                    );
+                    return;
+                };
 
                 let mut prev_workspace = lock!(active);
 
@@ -173,7 +184,7 @@ impl Client {
 
             event_listener.add_workspace_moved_handler(move |event_data| {
                 let _lock = lock!(lock);
-                let workspace_type = event_data.workspace;
+                let workspace_type = event_data.name;
                 debug!("Received workspace move: {workspace_type:?}");
 
                 let mut prev_workspace = lock!(active);
@@ -195,15 +206,15 @@ impl Client {
             let tx = tx.clone();
             let lock = lock.clone();
 
-            event_listener.add_workspace_rename_handler(move |data| {
+            event_listener.add_workspace_renamed_handler(move |event_data| {
                 let _lock = lock!(lock);
-                debug!("Received workspace rename: {data:?}");
+                debug!("Received workspace rename: {event_data:?}");
 
                 send!(
                     tx,
                     WorkspaceUpdate::Rename {
-                        id: data.workspace_id as i64,
-                        name: data.workspace_name
+                        id: event_data.id as i64,
+                        name: event_data.name
                     }
                 );
             });
@@ -213,10 +224,10 @@ impl Client {
             let tx = tx.clone();
             let lock = lock.clone();
 
-            event_listener.add_workspace_destroy_handler(move |data| {
+            event_listener.add_workspace_deleted_handler(move |event_data| {
                 let _lock = lock!(lock);
-                debug!("Received workspace destroy: {data:?}");
-                send!(tx, WorkspaceUpdate::Remove(data.workspace_id as i64));
+                debug!("Received workspace destroy: {event_data:?}");
+                send!(tx, WorkspaceUpdate::Remove(event_data.id as i64));
             });
         }
 
@@ -224,7 +235,7 @@ impl Client {
             let tx = tx.clone();
             let lock = lock.clone();
 
-            event_listener.add_urgent_state_handler(move |address| {
+            event_listener.add_urgent_state_changed_handler(move |address| {
                 let _lock = lock!(lock);
                 debug!("Received urgent state: {address:?}");
 
@@ -262,44 +273,10 @@ impl Client {
         let tx = keyboard_layout_tx.clone();
         let lock = lock.clone();
 
-        event_listener.add_keyboard_layout_change_handler(move |layout_event| {
+        event_listener.add_layout_changed_handler(move |layout_event| {
             let _lock = lock!(lock);
 
-            let layout = if layout_event.layout_name.is_empty() {
-                // FIXME: This field is empty due to bug in `hyprland-rs_0.4.0-alpha.3`. Which is already fixed in last betas
-
-                // The layout may be empty due to a bug in `hyprland-rs`, because of which the `layout_event` is incorrect.
-                //
-                // Instead of:
-                // ```
-                // LayoutEvent {
-                //     keyboard_name: "keychron-keychron-c2",
-                //     layout_name: "English (US)",
-                // }
-                // ```
-                //
-                // We get:
-                // ```
-                // LayoutEvent {
-                //     keyboard_name: "keychron-keychron-c2,English (US)",
-                //     layout_name: "",
-                // }
-                // ```
-                // 
-                // Here we are trying to recover `layout_name` from `keyboard_name`
-
-                let layout = layout_event.keyboard_name.as_str().split(',').nth(1);
-                let Some(layout) = layout else {
-                    error!(
-                        "Failed to get layout from string: {}. The failed logic is a workaround for a bug in `hyprland 0.4.0-alpha.3`", layout_event.keyboard_name);
-                    return;
-                };
-
-                layout.into()
-            }
-            else {
-                layout_event.layout_name
-            };
+            let layout = layout_event.layout_name;
 
             debug!("Received layout: {layout:?}");
 
