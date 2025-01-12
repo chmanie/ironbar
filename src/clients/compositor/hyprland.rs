@@ -48,8 +48,9 @@ impl Client {
                 let lock = lock.clone();
                 let active = active.clone();
 
-                event_listener.add_workspace_added_handler(move |workspace_type| {
+                event_listener.add_workspace_added_handler(move |event_data| {
                     let _lock = lock!(lock);
+                    let workspace_type = event_data.name;
                     debug!("Added workspace: {workspace_type:?}");
 
                     let workspace_name = get_workspace_name(workspace_type);
@@ -68,11 +69,12 @@ impl Client {
                 let lock = lock.clone();
                 let active = active.clone();
 
-                event_listener.add_workspace_change_handler(move |workspace_type| {
+                event_listener.add_workspace_changed_handler(move |event_data| {
                     let _lock = lock!(lock);
 
                     let mut prev_workspace = lock!(active);
 
+                    let workspace_type = event_data.name;
                     debug!(
                         "Received workspace change: {:?} -> {workspace_type:?}",
                         prev_workspace.as_ref().map(|w| &w.id)
@@ -100,9 +102,18 @@ impl Client {
                 let lock = lock.clone();
                 let active = active.clone();
 
-                event_listener.add_active_monitor_change_handler(move |event_data| {
+                event_listener.add_active_monitor_changed_handler(move |event_data| {
                     let _lock = lock!(lock);
-                    let workspace_type = event_data.workspace;
+
+                    let workspace_type = if let Some(name) = event_data.workspace_name {
+                        name
+                    } else {
+                        error!(
+                            "unable to locate workspace on monitor: {}",
+                            event_data.monitor_name
+                        );
+                        return;
+                    };
 
                     let mut prev_workspace = lock!(active);
 
@@ -130,7 +141,7 @@ impl Client {
 
                 event_listener.add_workspace_moved_handler(move |event_data| {
                     let _lock = lock!(lock);
-                    let workspace_type = event_data.workspace;
+                    let workspace_type = event_data.name;
                     debug!("Received workspace move: {workspace_type:?}");
 
                     let mut prev_workspace = lock!(active);
@@ -152,15 +163,15 @@ impl Client {
                 let tx = tx.clone();
                 let lock = lock.clone();
 
-                event_listener.add_workspace_rename_handler(move |data| {
+                event_listener.add_workspace_renamed_handler(move |event_data| {
                     let _lock = lock!(lock);
-                    debug!("Received workspace rename: {data:?}");
+                    debug!("Received workspace rename: {event_data:?}");
 
                     send!(
                         tx,
                         WorkspaceUpdate::Rename {
-                            id: data.workspace_id as i64,
-                            name: data.workspace_name
+                            id: event_data.id as i64,
+                            name: event_data.name
                         }
                     );
                 });
@@ -170,15 +181,15 @@ impl Client {
                 let tx = tx.clone();
                 let lock = lock.clone();
 
-                event_listener.add_workspace_destroy_handler(move |data| {
+                event_listener.add_workspace_deleted_handler(move |event_data| {
                     let _lock = lock!(lock);
-                    debug!("Received workspace destroy: {data:?}");
-                    send!(tx, WorkspaceUpdate::Remove(data.workspace_id as i64));
+                    debug!("Received workspace destroy: {event_data:?}");
+                    send!(tx, WorkspaceUpdate::Remove(event_data.id as i64));
                 });
             }
 
             {
-                event_listener.add_urgent_state_handler(move |address| {
+                event_listener.add_urgent_state_changed_handler(move |address| {
                     let _lock = lock!(lock);
                     debug!("Received urgent state: {address:?}");
 

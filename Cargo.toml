@@ -85,6 +85,7 @@ workspaces = ["futures-lite"]
 sway = ["swayipc-async"]
 
 schema = ["dep:schemars"]
+hyprland = ["dep:hyprland"]
 
 [dependencies]
 # core
@@ -166,7 +167,7 @@ libpulse-binding = { version = "2.28.2", optional = true }
 
 # workspaces
 swayipc-async = { version = "2.0.1", optional = true }
-hyprland = { version = "0.4.0-alpha.3", features = ["silent"], optional = true }
+hyprland = { version = "0.4.0-beta.2", optional = true, git = "https://github.com/zjeffer/hyprland-rs", rev = "5c06457" }
 
 # shared
 futures-lite = { version = "2.5.0", optional = true } # network_manager, upower, workspaces
